@@ -6,22 +6,32 @@ import java.nio.file.*;
 import java.util.Locale;
 
 public class REXXCompiler implements REXXCompilerConstants {
+
+    // Contador utilizado para generar etiquetas únicas en los saltos.
     private int nextLabel = 0;
 
+    // Genera una etiqueta nueva para las estructuras de control.
     private String label() {
         return "LBL" + (nextLabel++);
     }
 
+    // Añade un salto de línea a cada instrucción generada.
     private String line(String s) {
         return s + "\n";
     }
 
+    /*
+     * Lee el programa desde un archivo (si se proporciona un argumento)
+     * o desde la entrada estándar. Después analiza el programa e imprime
+     * por pantalla el código de la máquina virtual generado.
+     */
     public static void main(String[] args) throws Exception {
+
         Reader in = args.length == 0
             ? new InputStreamReader(System.in, StandardCharsets.UTF_8)
             : Files.newBufferedReader(
                 Paths.get(args[0]), StandardCharsets.UTF_8
-              );
+            );
 
         REXXCompiler parser = new REXXCompiler(in);
 
@@ -43,6 +53,10 @@ public class REXXCompiler implements REXXCompilerConstants {
         }
     }
 
+/*
+ * Programa completo: analiza una secuencia de instrucciones
+ * hasta encontrar el final de la entrada.
+ */
   final public String Program() throws ParseException {String code;
     code = Statements();
     jj_consume_token(0);
@@ -50,6 +64,10 @@ public class REXXCompiler implements REXXCompilerConstants {
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Secuencia de instrucciones.
+ * Concatena el código generado por cada instrucción.
+ */
   final public String Statements() throws ParseException {StringBuilder b = new StringBuilder();
     String s;
     label_1:
@@ -75,6 +93,11 @@ b.append(s);
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Procesa las instrucciones del lenguaje:
+ * asignación, PULL, SAY, IF, SELECT y bucles DO.
+ * Cada alternativa devuelve las instrucciones de máquina virtual.
+ */
   final public String Statement() throws ParseException {Token id;
     String e;
     String b;
@@ -101,7 +124,11 @@ b.append(s);
     String update;
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case ID:{
-      id = jj_consume_token(ID);
+      /*
+           * Asignación: evalúa la expresión y guarda el resultado
+           * en la variable indicada.
+           */
+          id = jj_consume_token(ID);
       jj_consume_token(EQ);
       e = Expression();
 {if ("" != null) return line("valori " + id.image.toUpperCase(Locale.ROOT))
@@ -305,7 +332,12 @@ top = label();
         break;
         }
       case ID:{
-        id = jj_consume_token(ID);
+        /*
+                 * DO con contador: evalúa la expresión inicial una vez,
+                 * comprueba el límite en cada iteración y actualiza el contador.
+                 * BY permite indicar el incremento o decremento.
+                 */
+                id = jj_consume_token(ID);
         jj_consume_token(EQ);
         e = Expression();
         jj_consume_token(TO);
@@ -342,6 +374,7 @@ subtract = true;
           cadNum = jj_consume_token(NUM);
 step = cadNum.image;
 
+                // Un incremento o decremento igual a cero no está permitido.
                 if (step.matches("0+")) {
                     {if (true) throw new IllegalArgumentException(
                         "BY no puede ser 0"
@@ -358,15 +391,18 @@ top = label();
             var = id.image.toUpperCase(Locale.ROOT);
         b = Statements();
         jj_consume_token(END);
-init = line("valori " + var)
+// Inicialización del contador.
+            init = line("valori " + var)
                  + e
                  + line("asigna");
 
+            // Comprobación del límite del bucle.
             test = line("valord " + var)
                  + s
                  + line(subtract ? "esmenor" : "esmayor")
                  + line("siciertovea " + done);
 
+            // Actualización del contador al terminar cada iteración.
             update = line("valori " + var)
                    + line("valord " + var)
                    + line("mete " + step)
@@ -397,6 +433,11 @@ init = line("valori " + var)
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Condiciones:
+ * una expresión aritmética puede aparecer sola o compararse
+ * con otra expresión mediante un operador relacional.
+ */
   final public String Condition() throws ParseException {String a;
     String b;
     Token op;
@@ -467,6 +508,11 @@ if (op.kind == EQ) {
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Expresiones aritméticas de suma y resta.
+ * La repetición permite procesar los operadores de izquierda a derecha.
+ * La llamada a Term() establece la precedencia de multiplicación y división.
+ */
   final public String Expression() throws ParseException {String a;
     String b;
     Token op;
@@ -506,6 +552,10 @@ a += b + line(
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Términos con multiplicación y división.
+ * Tienen mayor precedencia que la suma y la resta.
+ */
   final public String Term() throws ParseException {String a;
     String b;
     Token op;
@@ -545,6 +595,11 @@ a += b + line(
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Procesa los operadores unarios positivo y negativo.
+ * El signo positivo no requiere generar una instrucción.
+ * El negativo se traduce mediante cero menos el valor.
+ */
   final public String Unary() throws ParseException {String a;
     Token op;
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
@@ -586,6 +641,10 @@ a += b + line(
     throw new Error("Missing return statement in function");
 }
 
+/*
+ * Elementos básicos de una expresión:
+ * números, variables, expresiones entre paréntesis y CHOOSE.
+ */
   final public String Primary() throws ParseException {Token t;
     String a;
     String cond;
@@ -593,12 +652,18 @@ a += b + line(
     String yes;
     switch ((jj_ntk==-1)?jj_ntk_f():jj_ntk) {
     case NUM:{
-      t = jj_consume_token(NUM);
+      /*
+           * Número entero: se introduce directamente en la pila.
+           */
+          t = jj_consume_token(NUM);
 {if ("" != null) return line("mete " + t.image);}
       break;
       }
     case ID:{
-      t = jj_consume_token(ID);
+      /*
+           * Variable: se obtiene su valor y se coloca en la pila.
+           */
+          t = jj_consume_token(ID);
 {if ("" != null) return line(
             "valord " + t.image.toUpperCase(Locale.ROOT)
         );}
