@@ -1,0 +1,4 @@
+A = 10
+
+IF A > 5 THEN DO
+    SAY "HOLA"

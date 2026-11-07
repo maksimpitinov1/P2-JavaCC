@@ -1,0 +1,548 @@
+
+options {
+  STATIC = false;
+  JAVA_UNICODE_ESCAPE = false;
+  ERROR_REPORTING = true;
+}
+
+PARSER_BEGIN(REXXCompiler)
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.Locale;
+
+public class REXXCompiler {
+    private int nextLabel = 0;
+
+    private String label() {
+        return "LBL" + (nextLabel++);
+    }
+
+    private String line(String s) {
+        return s + "\n";
+    }
+
+    public static void main(String[] args) throws Exception {
+        Reader in = args.length == 0
+            ? new InputStreamReader(System.in, StandardCharsets.UTF_8)
+            : Files.newBufferedReader(
+                Paths.get(args[0]), StandardCharsets.UTF_8
+              );
+
+        REXXCompiler parser = new REXXCompiler(in);
+
+        try {
+            String code = parser.Program();
+            System.out.print(code);
+
+        } catch (ParseException e) {
+            System.err.println("Error sintáctico: " + e.getMessage());
+            System.exit(1);
+
+        } catch (TokenMgrError e) {
+            System.err.println("Error léxico: " + e.getMessage());
+            System.exit(1);
+
+        } catch (IllegalArgumentException e) {
+            System.err.println("Error semántico: " + e.getMessage());
+            System.exit(1);
+        }
+    }
+}
+PARSER_END(REXXCompiler)
+
+SKIP :
+{
+    " " | "\t" | "\r" | "\n" | ";"
+}
+
+SKIP :
+{
+    <COMMENT: "/*" ( ~["*"] | "*" ~["/"] )* "*/" >
+}
+
+TOKEN :
+{
+    <PULL: ["p","P"] ["u","U"] ["l","L"] ["l","L"] > |
+    <SAY: ["s","S"] ["a","A"] ["y","Y"] > |
+    <IF: ["i","I"] ["f","F"] > |
+    <THEN: ["t","T"] ["h","H"] ["e","E"] ["n","N"] > |
+    <ELSE: ["e","E"] ["l","L"] ["s","S"] ["e","E"] > |
+    <DO: ["d","D"] ["o","O"] > |
+    <END: ["e","E"] ["n","N"] ["d","D"] > |
+    <WHILE: ["w","W"] ["h","H"] ["i","I"] ["l","L"] ["e","E"] > |
+    <UNTIL: ["u","U"] ["n","N"] ["t","T"] ["i","I"] ["l","L"] > |
+    <TO: ["t","T"] ["o","O"] > |
+    <BY: ["b","B"] ["y","Y"] > |
+    <SELECT: ["s","S"] ["e","E"] ["l","L"] ["e","E"] ["c","C"] ["t","T"] > |
+    <WHEN: ["w","W"] ["h","H"] ["e","E"] ["n","N"] > |
+    <OTHERWISE: ["o","O"] ["t","T"] ["h","H"] ["e","E"] ["r","R"] ["w","W"] ["i","I"] ["s","S"] ["e","E"] > |
+    <CHOOSE: ["c","C"] ["h","H"] ["o","O"] ["o","O"] ["s","S"] ["e","E"] > |
+    <ADDING: ["a","A"] ["d","D"] ["d","D"] ["i","I"] ["n","N"] ["g","G"] > |
+    <SUBTRACTING: ["s","S"] ["u","U"] ["b","B"] ["t","T"] ["r","R"] ["a","A"] ["c","C"] ["t","T"] ["i","I"] ["n","N"] ["g","G"] >
+}
+
+TOKEN :
+{
+    <NUM: (["0"-"9"])+ >
+}
+
+TOKEN :
+{
+    <ID: (["a"-"z","A"-"Z","_"])
+         (["a"-"z","A"-"Z","0"-"9","_"])* >
+}
+
+TOKEN :
+{
+    <CAD: "\"" (~["\"","\r","\n"])* "\""
+        | "'" (~["'","\r","\n"])* "'" >
+}
+
+TOKEN :
+{
+    <LE: "<=" > |
+    <GE: ">=" > |
+    <NE: "<>" > |
+    <LT: "<" > |
+    <GT: ">" > |
+    <EQ: "=" > |
+    <PLUS: "+" > |
+    <MINUS: "-" > |
+    <STAR: "*" > |
+    <SLASH: "/" > |
+    <LP: "(" > |
+    <RP: ")" > |
+    <COMMA: "," >
+}
+
+String Program() :
+{
+    String code;
+}
+{
+    code=Statements() <EOF>
+    {
+        return code;
+    }
+}
+
+String Statements() :
+{
+    StringBuilder b = new StringBuilder();
+    String s;
+}
+{
+    (
+        s=Statement()
+        {
+            b.append(s);
+        }
+    )*
+    {
+        return b.toString();
+    }
+}
+
+String Statement() :
+{
+    Token id;
+    String e;
+    String b;
+    String c;
+    String s;
+    StringBuilder out;
+    int n;
+    Token cad;
+    Token cadNum;
+
+    String otherwiseCode;
+    String otherwiseLabel;
+    String doneLabel;
+    String finish;
+    String next;
+    String top;
+    String done;
+    String step;
+    boolean subtract;
+    boolean hasElse;
+    String var;
+    String init;
+    String test;
+    String update;
+}
+{
+    id=<ID> <EQ> e=Expression()
+    {
+        return line("valori " + id.image.toUpperCase(Locale.ROOT))
+             + e
+             + line("asigna");
+    }
+
+  | <PULL> id=<ID>
+    {
+        return line("lee " + id.image.toUpperCase(Locale.ROOT));
+    }
+
+  | <SAY>
+    {
+        out = new StringBuilder();
+        n = 0;
+    }
+    (
+        (
+            cad=<CAD>
+            {
+                out.append(line("metecad " + cad.image));
+                n++;
+            }
+          |
+            e=Expression()
+            {
+                out.append(e);
+                n++;
+            }
+        )
+        (
+            <COMMA>
+            (
+                cad=<CAD>
+                {
+                    out.append(line("metecad " + cad.image));
+                    n++;
+                }
+              |
+                e=Expression()
+                {
+                    out.append(e);
+                    n++;
+                }
+            )
+        )*
+    )
+    {
+        out.append(line("print " + n));
+        return out.toString();
+    }
+
+  | <IF> c=Condition() <THEN> <DO>
+    b=Statements() <END>
+    {
+        otherwiseLabel = label();
+        doneLabel = label();
+        otherwiseCode = "";
+        hasElse = false;
+    }
+    [
+        <ELSE> <DO> s=Statements() <END>
+        {
+            otherwiseCode = s;
+            hasElse = true;
+        }
+    ]
+    {
+        if (!hasElse) {
+            return c
+                + line("sifalsovea " + otherwiseLabel)
+                + b
+                + otherwiseLabel + ":\n";
+        }
+
+        return c
+            + line("sifalsovea " + otherwiseLabel)
+            + b
+            + line("vea " + doneLabel)
+            + otherwiseLabel + ":\n"
+            + otherwiseCode
+            + doneLabel + ":\n";
+    }
+
+  | <SELECT>
+    {
+        out = new StringBuilder();
+        finish = label();
+    }
+    (
+        <WHEN> c=Condition() <THEN> <DO>
+        b=Statements() <END>
+        {
+            next = label();
+
+            out.append(c)
+               .append(line("sifalsovea " + next))
+               .append(b)
+               .append(line("vea " + finish))
+               .append(next)
+               .append(":\n");
+        }
+    )+
+    [
+        <OTHERWISE> <DO> s=Statements() <END>
+        {
+            out.append(s);
+        }
+    ]
+    <END>
+    {
+        out.append(finish).append(":\n");
+        return out.toString();
+    }
+
+  | <DO>
+    (
+        <WHILE> c=Condition()
+        {
+            top = label();
+            done = label();
+        }
+        b=Statements() <END>
+        {
+            return top + ":\n"
+                + c
+                + line("sifalsovea " + done)
+                + b
+                + line("vea " + top)
+                + done + ":\n";
+        }
+
+      |
+        <UNTIL> c=Condition()
+        {
+            top = label();
+            done = label();
+        }
+        b=Statements() <END>
+        {
+            return top + ":\n"
+                + b
+                + c
+                + line("siciertovea " + done)
+                + line("vea " + top)
+                + done + ":\n";
+        }
+
+      |
+        id=<ID> <EQ> e=Expression() <TO> s=Expression()
+        {
+            step = "1";
+            subtract = false;
+        }
+        [
+            <BY>
+            [
+                <ADDING>
+              |
+                <SUBTRACTING>
+                {
+                    subtract = true;
+                }
+            ]
+            cadNum=<NUM>
+            {
+                step = cadNum.image;
+
+                if (step.matches("0+")) {
+                    throw new IllegalArgumentException(
+                        "BY no puede ser 0"
+                    );
+                }
+            }
+        ]
+        {
+            top = label();
+            done = label();
+            var = id.image.toUpperCase(Locale.ROOT);
+        }
+        b=Statements() <END>
+        {
+            init = line("valori " + var)
+                 + e
+                 + line("asigna");
+
+            test = line("valord " + var)
+                 + s
+                 + line(subtract ? "esmenor" : "esmayor")
+                 + line("siciertovea " + done);
+
+            update = line("valori " + var)
+                   + line("valord " + var)
+                   + line("mete " + step)
+                   + line(subtract ? "sub" : "add")
+                   + line("asigna");
+
+            return init
+                + top + ":\n"
+                + test
+                + b
+                + update
+                + line("vea " + top)
+                + done + ":\n";
+        }
+    )
+}
+
+String Condition() :
+{
+    String a;
+    String b;
+    Token op;
+}
+{
+    a=Expression()
+    [
+        (
+            op=<EQ>
+          | op=<NE>
+          | op=<LT>
+          | op=<GT>
+          | op=<LE>
+          | op=<GE>
+        )
+        b=Expression()
+        {
+            if (op.kind == EQ) {
+                a += b + line("esigual");
+            }
+            else if (op.kind == NE) {
+                a += b + line("esigual") + line("not");
+            }
+            else if (op.kind == LT) {
+                a += b + line("esmenor");
+            }
+            else if (op.kind == GT) {
+                a += b + line("esmayor");
+            }
+            else if (op.kind == LE) {
+                a += b + line("esmayor") + line("not");
+            }
+            else {
+                a += b + line("esmenor") + line("not");
+            }
+        }
+    ]
+    {
+        return a;
+    }
+}
+
+String Expression() :
+{
+    String a;
+    String b;
+    Token op;
+}
+{
+    a=Term()
+    (
+        (
+            op=<PLUS>
+          | op=<MINUS>
+        )
+        b=Term()
+        {
+            a += b + line(
+                op.kind == PLUS ? "add" : "sub"
+            );
+        }
+    )*
+    {
+        return a;
+    }
+}
+
+String Term() :
+{
+    String a;
+    String b;
+    Token op;
+}
+{
+    a=Unary()
+    (
+        (
+            op=<STAR>
+          | op=<SLASH>
+        )
+        b=Unary()
+        {
+            a += b + line(
+                op.kind == STAR ? "mul" : "div"
+            );
+        }
+    )*
+    {
+        return a;
+    }
+}
+
+String Unary() :
+{
+    String a;
+    Token op;
+}
+{
+    (
+        (
+            op=<PLUS>
+          | op=<MINUS>
+        )
+        a=Unary()
+        {
+            return op.kind == PLUS
+                ? a
+                : line("mete 0") + a + line("sub");
+        }
+    )
+  |
+    a=Primary()
+    {
+        return a;
+    }
+}
+
+String Primary() :
+{
+    Token t;
+    String a;
+    String cond;
+    String no;
+    String yes;
+}
+{
+    t=<NUM>
+    {
+        return line("mete " + t.image);
+    }
+
+  |
+    t=<ID>
+    {
+        return line(
+            "valord " + t.image.toUpperCase(Locale.ROOT)
+        );
+    }
+
+  |
+    <LP> a=Expression() <RP>
+    {
+        return a;
+    }
+
+  |
+    <CHOOSE> <LP>
+    cond=Condition() <COMMA>
+    yes=Expression() <COMMA>
+    no=Expression() <RP>
+    {
+        String otherwise = label();
+        String done = label();
+
+        return cond
+            + line("sifalsovea " + otherwise)
+            + yes
+            + line("vea " + done)
+            + otherwise + ":\n"
+            + no
+            + done + ":\n";
+    }
+}

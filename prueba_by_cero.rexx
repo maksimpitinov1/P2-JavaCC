@@ -1,0 +1,3 @@
+DO I = 1 TO 5 BY ADDING 0
+    SAY I
+END

@@ -1,0 +1,9 @@
+A = 0
+
+DO I = 1 TO 5 BY ADDING 2
+    SAY I
+END
+
+DO J = 5 TO 1 BY SUBTRACTING 2
+    SAY J
+END

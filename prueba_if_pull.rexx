@@ -1,0 +1,8 @@
+A = 10
+
+IF A > 3 THEN DO
+    SAY "CORRECTO"
+END
+
+PULL X
+SAY X

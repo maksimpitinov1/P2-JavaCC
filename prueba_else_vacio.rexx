@@ -1,0 +1,9 @@
+A = 1
+
+IF A = 1 THEN DO
+    SAY "TRUE"
+END
+ELSE DO
+END
+
+SAY "FIN"
