@@ -1,33 +1,55 @@
+/*
+ * Compilador Mini-REXX implementado con JavaCC
+ * Autor: Maksim Pitinov
+ * Analiza programas escritos en Mini-REXX y genera instrucciones
+ * para una máquina virtual de pila
+ */
 
 options {
-  STATIC = false;
-  JAVA_UNICODE_ESCAPE = false;
-  ERROR_REPORTING = true;
+    STATIC = false;
+    JAVA_UNICODE_ESCAPE = false;
+    ERROR_REPORTING = true;
 }
 
+/*
+ * Código Java asociado al parser.
+ * Incluye la gestión de etiquetas, la lectura de entrada
+ * y el tratamiento de errores.
+ */
 PARSER_BEGIN(REXXCompiler)
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.Locale;
 
 public class REXXCompiler {
+
+    // Contador utilizado para generar etiquetas únicas en los saltos.
     private int nextLabel = 0;
 
+    // Genera una etiqueta nueva para las estructuras de control.
     private String label() {
         return "LBL" + (nextLabel++);
     }
 
+    // Añade un salto de línea a cada instrucción generada.
     private String line(String s) {
         return s + "\n";
     }
 
+    /*
+     * Lee el programa desde un archivo (si se proporciona un argumento)
+     * o desde la entrada estándar. Después analiza el programa e imprime
+     * por pantalla el código de la máquina virtual generado.
+     */
     public static void main(String[] args) throws Exception {
+
         Reader in = args.length == 0
             ? new InputStreamReader(System.in, StandardCharsets.UTF_8)
             : Files.newBufferedReader(
                 Paths.get(args[0]), StandardCharsets.UTF_8
-              );
+            );
 
         REXXCompiler parser = new REXXCompiler(in);
 
@@ -49,18 +71,31 @@ public class REXXCompiler {
         }
     }
 }
+
 PARSER_END(REXXCompiler)
 
+/*
+ * Caracteres y separadores que se ignoran durante el análisis.
+ * El punto y coma también puede utilizarse como separador de instrucciones.
+ */
 SKIP :
 {
     " " | "\t" | "\r" | "\n" | ";"
 }
 
+/*
+ * Reconocimiento de comentarios de bloque.
+ * Se ignoran y no generan instrucciones para la máquina virtual.
+ */
 SKIP :
 {
     <COMMENT: "/*" ( ~["*"] | "*" ~["/"] )* "*/" >
 }
 
+/*
+ * Palabras reservadas del lenguaje.
+ * Cada letra admite su versión mayúscula o minúscula.
+ */
 TOKEN :
 {
     <PULL: ["p","P"] ["u","U"] ["l","L"] ["l","L"] > |
@@ -82,23 +117,39 @@ TOKEN :
     <SUBTRACTING: ["s","S"] ["u","U"] ["b","B"] ["t","T"] ["r","R"] ["a","A"] ["c","C"] ["t","T"] ["i","I"] ["n","N"] ["g","G"] >
 }
 
+/*
+ * Literales numéricos: secuencias de uno o más dígitos.
+ * Los signos se procesan por separado como operadores unarios.
+ */
 TOKEN :
 {
     <NUM: (["0"-"9"])+ >
 }
 
+/*
+ * Identificadores: comienzan por una letra o guion bajo
+ * y pueden continuar con letras, dígitos o guiones bajos.
+ */
 TOKEN :
 {
     <ID: (["a"-"z","A"-"Z","_"])
          (["a"-"z","A"-"Z","0"-"9","_"])* >
 }
 
+/*
+ * Cadenas entre comillas simples o dobles.
+ * No se permiten saltos de línea ni comillas sin cerrar.
+ */
 TOKEN :
 {
     <CAD: "\"" (~["\"","\r","\n"])* "\""
         | "'" (~["'","\r","\n"])* "'" >
 }
 
+/*
+ * Operadores relacionales y aritméticos, paréntesis y coma.
+ * Los operadores de dos caracteres se definen antes que los simples.
+ */
 TOKEN :
 {
     <LE: "<=" > |
@@ -116,6 +167,10 @@ TOKEN :
     <COMMA: "," >
 }
 
+/*
+ * Programa completo: analiza una secuencia de instrucciones
+ * hasta encontrar el final de la entrada.
+ */
 String Program() :
 {
     String code;
@@ -127,6 +182,10 @@ String Program() :
     }
 }
 
+/*
+ * Secuencia de instrucciones.
+ * Concatena el código generado por cada instrucción.
+ */
 String Statements() :
 {
     StringBuilder b = new StringBuilder();
@@ -144,6 +203,11 @@ String Statements() :
     }
 }
 
+/*
+ * Procesa las instrucciones del lenguaje:
+ * asignación, PULL, SAY, IF, SELECT y bucles DO.
+ * Cada alternativa devuelve las instrucciones de máquina virtual.
+ */
 String Statement() :
 {
     Token id;
@@ -172,6 +236,10 @@ String Statement() :
     String update;
 }
 {
+    /*
+     * Asignación: evalúa la expresión y guarda el resultado
+     * en la variable indicada.
+     */
     id=<ID> <EQ> e=Expression()
     {
         return line("valori " + id.image.toUpperCase(Locale.ROOT))
@@ -179,12 +247,22 @@ String Statement() :
              + line("asigna");
     }
 
-  | <PULL> id=<ID>
+  |
+    /*
+     * PULL: lee un valor desde la entrada estándar
+     * y lo almacena en la variable indicada.
+     */
+    <PULL> id=<ID>
     {
         return line("lee " + id.image.toUpperCase(Locale.ROOT));
     }
 
-  | <SAY>
+  |
+    /*
+     * SAY: genera las cadenas y expresiones que se van a imprimir.
+     * El contador n indica cuántos elementos recibe la instrucción print.
+     */
+    <SAY>
     {
         out = new StringBuilder();
         n = 0;
@@ -225,7 +303,13 @@ String Statement() :
         return out.toString();
     }
 
-  | <IF> c=Condition() <THEN> <DO>
+  |
+    /*
+     * IF: genera un salto condicional.
+     * Si existe ELSE, también genera un salto para evitar ejecutar
+     * el bloque alternativo después de ejecutar el bloque THEN.
+     */
+    <IF> c=Condition() <THEN> <DO>
     b=Statements() <END>
     {
         otherwiseLabel = label();
@@ -257,7 +341,13 @@ String Statement() :
             + doneLabel + ":\n";
     }
 
-  | <SELECT>
+  |
+    /*
+     * SELECT: evalúa los WHEN en orden.
+     * Si ninguno se cumple, ejecuta el bloque OTHERWISE si existe.
+     * Cada alternativa WHEN que se ejecuta salta al final del SELECT.
+     */
+    <SELECT>
     {
         out = new StringBuilder();
         finish = label();
@@ -288,8 +378,17 @@ String Statement() :
         return out.toString();
     }
 
-  | <DO>
+  |
+    /*
+     * Bucles DO: se distinguen tres modalidades:
+     * WHILE, UNTIL y bucle con contador.
+     */
+    <DO>
     (
+        /*
+         * DO WHILE: comprueba la condición antes de ejecutar
+         * cada iteración. Si es falsa, salta al final del bucle.
+         */
         <WHILE> c=Condition()
         {
             top = label();
@@ -306,6 +405,10 @@ String Statement() :
         }
 
       |
+        /*
+         * DO UNTIL: ejecuta primero el cuerpo y comprueba después
+         * la condición. Cuando la condición es verdadera, termina.
+         */
         <UNTIL> c=Condition()
         {
             top = label();
@@ -322,6 +425,11 @@ String Statement() :
         }
 
       |
+        /*
+         * DO con contador: evalúa la expresión inicial una vez,
+         * comprueba el límite en cada iteración y actualiza el contador.
+         * BY permite indicar el incremento o decremento.
+         */
         id=<ID> <EQ> e=Expression() <TO> s=Expression()
         {
             step = "1";
@@ -341,6 +449,7 @@ String Statement() :
             {
                 step = cadNum.image;
 
+                // Un incremento o decremento igual a cero no está permitido.
                 if (step.matches("0+")) {
                     throw new IllegalArgumentException(
                         "BY no puede ser 0"
@@ -355,15 +464,18 @@ String Statement() :
         }
         b=Statements() <END>
         {
+            // Inicialización del contador.
             init = line("valori " + var)
                  + e
                  + line("asigna");
 
+            // Comprobación del límite del bucle.
             test = line("valord " + var)
                  + s
                  + line(subtract ? "esmenor" : "esmayor")
                  + line("siciertovea " + done);
 
+            // Actualización del contador al terminar cada iteración.
             update = line("valori " + var)
                    + line("valord " + var)
                    + line("mete " + step)
@@ -381,6 +493,11 @@ String Statement() :
     )
 }
 
+/*
+ * Condiciones:
+ * una expresión aritmética puede aparecer sola o compararse
+ * con otra expresión mediante un operador relacional.
+ */
 String Condition() :
 {
     String a;
@@ -425,6 +542,11 @@ String Condition() :
     }
 }
 
+/*
+ * Expresiones aritméticas de suma y resta.
+ * La repetición permite procesar los operadores de izquierda a derecha.
+ * La llamada a Term() establece la precedencia de multiplicación y división.
+ */
 String Expression() :
 {
     String a;
@@ -450,6 +572,10 @@ String Expression() :
     }
 }
 
+/*
+ * Términos con multiplicación y división.
+ * Tienen mayor precedencia que la suma y la resta.
+ */
 String Term() :
 {
     String a;
@@ -475,6 +601,11 @@ String Term() :
     }
 }
 
+/*
+ * Procesa los operadores unarios positivo y negativo.
+ * El signo positivo no requiere generar una instrucción.
+ * El negativo se traduce mediante cero menos el valor.
+ */
 String Unary() :
 {
     String a;
@@ -500,6 +631,10 @@ String Unary() :
     }
 }
 
+/*
+ * Elementos básicos de una expresión:
+ * números, variables, expresiones entre paréntesis y CHOOSE.
+ */
 String Primary() :
 {
     Token t;
@@ -509,12 +644,18 @@ String Primary() :
     String yes;
 }
 {
+    /*
+     * Número entero: se introduce directamente en la pila.
+     */
     t=<NUM>
     {
         return line("mete " + t.image);
     }
 
   |
+    /*
+     * Variable: se obtiene su valor y se coloca en la pila.
+     */
     t=<ID>
     {
         return line(
@@ -523,12 +664,19 @@ String Primary() :
     }
 
   |
+    /*
+     * Expresión entre paréntesis: conserva el resultado de la expresión.
+     */
     <LP> a=Expression() <RP>
     {
         return a;
     }
 
   |
+    /*
+     * CHOOSE(condición, expresión verdadera, expresión falsa).
+     * Los saltos hacen que solo se evalúe la expresión seleccionada.
+     */
     <CHOOSE> <LP>
     cond=Condition() <COMMA>
     yes=Expression() <COMMA>
